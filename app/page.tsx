@@ -1,21 +1,14 @@
-import HeroSection from "@/components/home/HeroSection"
-import CategorySection from "@/components/home/CategorySection"
-import FeaturedProducts from "@/components/home/FeaturedProducts"
-import TrendingProducts from "@/components/home/TrendingProducts"
-import NewArrivals from "@/components/home/NewArrivals"
-import WhyChooseUs from "@/components/home/WhyChooseUs"
-import FAQ from "@/components/home/FAQ"
+import { Suspense } from 'react'
+import HomeContent from "@/components/home/HomeContent"
+import HomeLoading from './loading'
+import MainLayout from '@/components/layout/MainLayout'
 
 export default function Home() {
   return (
-    <div className="pt-20">
-      <HeroSection />
-      <CategorySection />
-      <FeaturedProducts />
-      <TrendingProducts />
-      <NewArrivals />
-      <WhyChooseUs />
-      <FAQ />
-    </div>
+    <MainLayout>
+      <Suspense fallback={<HomeLoading />}>
+        <HomeContent />
+      </Suspense>
+    </MainLayout>
   )
 }

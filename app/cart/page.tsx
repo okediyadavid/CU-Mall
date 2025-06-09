@@ -9,11 +9,14 @@ import { Separator } from "@/components/ui/separator"
 import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 import { useAuth } from "@/context/AuthContext"
+import { toast } from "@/components/ui/use-toast"
+import { useRouter } from "next/navigation"
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, totalItems, totalPrice, checkout } = useCart()
   const { isAuthenticated } = useAuth()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const router = useRouter()
 
   const handleQuantityChange = (id: string, newQuantity: number) => {
     if (newQuantity <= 0) {
@@ -32,10 +35,25 @@ export default function CartPage() {
     try {
       const success = await checkout()
       if (success) {
+        toast({
+          title: "Order Placed!",
+          description: "Your order has been placed successfully. Redirecting to confirmation page...",
+          duration: 3000,
+        })
         // Checkout success is handled by the cart context
+        // Small delay before redirect to show the toast
+        setTimeout(() => {
+          router.push(`/checkout/success?orderId=${success.orderId}`)
+        }, 1000)
       }
     } catch (error) {
       console.error("Checkout error:", error)
+      toast({
+        variant: "destructive",
+        title: "Checkout Failed",
+        description: "There was an error processing your order. Please try again.",
+        duration: 3000,
+      })
     } finally {
       setIsCheckingOut(false)
     }
@@ -145,14 +163,14 @@ export default function CartPage() {
                   <span>Subtotal ({totalItems} items)</span>
                   <span>₦{totalPrice.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between text-green-600">
                   <span>Shipping</span>
-                  <span>{totalPrice >= 20 ? "Free" : "₦2.00"}</span>
+                  <span>Free</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>₦{(totalPrice + (totalPrice >= 20 ? 0 : 2)).toFixed(2)}</span>
+                  <span>₦{totalPrice.toFixed(2)}</span>
                 </div>
 
                 {!isAuthenticated ? (
@@ -168,9 +186,10 @@ export default function CartPage() {
                   </Button>
                 )}
 
-                <div className="text-xs text-muted-foreground text-center">
-                  <p>Free delivery for orders over ₦20</p>
-                  <p>Delivery within 24 hours to campus dorms</p>
+                <div className="text-xs text-muted-foreground text-center space-y-1">
+                  <p className="text-green-600 font-medium">Free delivery on all orders!</p>
+                  <p>Delivery within 24-48 hours to campus dorms</p>
+                  <p>Secure payment processing</p>
                 </div>
               </CardContent>
             </Card>

@@ -7,18 +7,46 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCart } from "@/context/CartContext"
-import { Star, ShoppingCart } from "lucide-react"
+import { Star, ShoppingCart, Minus, Plus, Check } from "lucide-react"
 
 export default function FeaturedProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const { addItem } = useCart()
+  const { addItem, updateQuantity, removeItem, items } = useCart()
+
+  const [quantities, setQuantities] = useState<{ [key: string]: number }>({})
+  const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({})
+  const [justAdded, setJustAdded] = useState<{ [key: string]: boolean }>({})
+
+  const getQuantity = (productId: string) => {
+    const cartItem = items.find((item) => item.id === productId)
+    return cartItem ? cartItem.quantity : quantities[productId] || 1
+  }
+
+  const handleQuantityChange = (productId: string, quantity: number) => {
+    const newQuantity = Math.max(1, Math.min(quantity, 10))
+
+    const cartItem = items.find((item) => item.id === productId)
+    if (cartItem) {
+      // Update cart quantity
+      updateQuantity(productId, newQuantity)
+    } else {
+      // Update local state for non-cart items
+      setQuantities((prev) => ({
+        ...prev,
+        [productId]: newQuantity,
+      }))
+    }
+  }
+
+  const isInCart = (productId: string) => {
+    return items.some((item) => item.id === productId)
+  }
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const response = await productsApi.getAll(1)
-        // Get first 4 products as featured
         setProducts(response.data.slice(0, 4))
       } catch (error) {
         console.error("Failed to fetch products:", error)
@@ -30,15 +58,38 @@ export default function FeaturedProducts() {
     fetchProducts()
   }, [])
 
-  const handleAddToCart = (product: Product) => {
-    addItem({
-      id: product.uuid,
-      name: product.title,
-      quantity: 1,
-      price: product.price,
-      category: product.category,
-      image: product.productImage,
-    })
+  const handleAddToCart = async (product: Product) => {
+    const productId = product.uuid
+    setAddingToCart((prev) => ({ ...prev, [productId]: true }))
+
+    try {
+      const quantity = getQuantity(productId)
+      addItem({
+        id: product.uuid,
+        name: product.title,
+        quantity: quantity,
+        price: product.price,
+        category: product.category,
+        image: product.productImage,
+      })
+
+      // Show success state
+      setJustAdded((prev) => ({ ...prev, [productId]: true }))
+
+      // Reset success state after 2 seconds
+      setTimeout(() => {
+        setJustAdded((prev) => ({ ...prev, [productId]: false }))
+      }, 2000)
+    } catch (error) {
+      console.error("Failed to add to cart:", error)
+    } finally {
+      setAddingToCart((prev) => ({ ...prev, [productId]: false }))
+    }
+  }
+
+  const handleRemoveFromCart = (productId: string) => {
+    removeItem(productId)
+    setQuantities((prev) => ({ ...prev, [productId]: 1 }))
   }
 
   return (
@@ -72,7 +123,7 @@ export default function FeaturedProducts() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {products.map((product) => (
-              <Card key={product.uuid} className="overflow-hidden group transition-all hover:shadow-md">
+              <Card key={product.uuid} className="overflow-hidden group transition-all hover:shadow-lg">
                 <CardContent className="p-0">
                   <Link href={`/products/${product.uuid}`}>
                     <div className="relative h-48 overflow-hidden">
@@ -85,7 +136,7 @@ export default function FeaturedProducts() {
                   </Link>
                   <div className="p-4">
                     <Link href={`/products/${product.uuid}`}>
-                      <h3 className="font-semibold text-lg mb-1 hover:text-primary transition-colors">
+                      <h3 className="font-semibold text-lg mb-1 hover:text-primary transition-colors line-clamp-2">
                         {product.title}
                       </h3>
                     </Link>
@@ -100,14 +151,85 @@ export default function FeaturedProducts() {
                       ))}
                       <span className="text-xs text-muted-foreground ml-1">({product.avgRating || 0})</span>
                     </div>
-                    <p className="font-bold text-lg">₦{product.price.toFixed(2)}</p>
+                    <p className="font-bold text-lg text-primary">₦{product.price.toFixed(2)}</p>
                   </div>
                 </CardContent>
-                <CardFooter className="p-4 pt-0">
-                  <Button onClick={() => handleAddToCart(product)} className="w-full group">
-                    <ShoppingCart className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
-                    Add to Cart
-                  </Button>
+                <CardFooter className="p-4 pt-0 space-y-3">
+                  {/* Quantity Selector - Always Visible */}
+                  <div className="flex items-center justify-center space-x-3 w-full">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) - 1)}
+                      disabled={getQuantity(product.uuid) <= 1}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="font-semibold text-lg min-w-[2rem] text-center">{getQuantity(product.uuid)}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) + 1)}
+                      disabled={getQuantity(product.uuid) >= 10}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Add to Cart Button */}
+                  {!isInCart(product.uuid) ? (
+                    <Button
+                      onClick={() => handleAddToCart(product)}
+                      className="w-full h-11 font-semibold transition-all duration-200 hover:scale-105"
+                      disabled={addingToCart[product.uuid]}
+                    >
+                      {addingToCart[product.uuid] ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Adding...</span>
+                        </div>
+                      ) : justAdded[product.uuid] ? (
+                        <div className="flex items-center space-x-2 text-green-600">
+                          <Check className="h-4 w-4" />
+                          <span>Added!</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <ShoppingCart className="h-4 w-4" />
+                          <span>Add to Cart</span>
+                        </div>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 w-full">
+                      <Button
+                        onClick={() => handleAddToCart(product)}
+                        className="w-full h-11 font-semibold bg-green-600 hover:bg-green-700"
+                        disabled={addingToCart[product.uuid]}
+                      >
+                        {addingToCart[product.uuid] ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Updating...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <Check className="h-4 w-4" />
+                            <span>Update Cart</span>
+                          </div>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRemoveFromCart(product.uuid)}
+                        className="w-full h-9 text-sm text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        Remove from Cart
+                      </Button>
+                    </div>
+                  )}
                 </CardFooter>
               </Card>
             ))}
@@ -116,7 +238,7 @@ export default function FeaturedProducts() {
 
         <div className="text-center mt-10">
           <Link href="/products">
-            <Button variant="outline" size="lg">
+            <Button variant="outline" size="lg" className="hover:scale-105 transition-transform">
               View All Products
             </Button>
           </Link>

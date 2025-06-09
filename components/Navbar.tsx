@@ -67,7 +67,7 @@ export default function Navbar() {
   const navItems = [
     { name: "Home", path: "/" },
     { name: "All Products", path: "/products" },
-    { name: "All Stationeries", path: "/categories/Stationery" },
+    { name: "Stationeries", path: "/categories/Stationeries" },
     { name: "Personal Care", path: "/categories/Personal Care" },
     { name: "Dorm Essentials", path: "/categories/Dorm Essentials" },
     { name: "Sports & Fitness", path: "/categories/Sports & Fitness" },
@@ -241,3 +241,4 @@ export default function Navbar() {
     </nav>
   )
 }
+

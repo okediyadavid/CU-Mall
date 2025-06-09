@@ -8,8 +8,34 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
+import { useToast } from "@/components/ui/use-toast"
+
+// List of valid halls
+const VALID_HALLS = [
+  "Daniel Hall",
+  "Joseph Hall",
+  "Paul Hall",
+  "Peter Hall",
+  "John Hall",
+  "Esther Hall",
+  "Deborah Hall",
+  "Mary Hall",
+  "Dorcas Hall",
+  "Lydia Hall",
+] as const
+
+// Password requirements
+const PASSWORD_REQUIREMENTS = [
+  { label: "At least 8 characters long", regex: /.{8,}/ },
+  { label: "Contains at least one uppercase letter", regex: /[A-Z]/ },
+  { label: "Contains at least one lowercase letter", regex: /[a-z]/ },
+  { label: "Contains at least one number", regex: /[0-9]/ },
+  { label: "Contains at least one special character", regex: /[!@#$%^&*(),.?":{}|<>]/ },
+]
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -26,8 +52,10 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState("")
   const { signup, isAuthenticated } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -35,18 +63,54 @@ export default function SignupPage() {
     }
   }, [isAuthenticated, router])
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[a-zA-Z0-9._-]+@(covenantuniversity\.edu\.ng|stu\.cu\.edu\.ng)$/
+    return emailRegex.test(email)
+  }
+
+  const validateRoomNumber = (roomNumber: string) => {
+    // Format: Letter followed by 3 digits (e.g., A123, B234)
+    const roomRegex = /^[A-Z]\d{3}$/
+    return roomRegex.test(roomNumber)
+  }
+
+  const validatePassword = (password: string) => {
+    const failedRequirements = PASSWORD_REQUIREMENTS.filter(req => !req.regex.test(password))
+    return failedRequirements.length === 0 ? "" : failedRequirements.map(req => req.label).join(", ")
+  }
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
     if (!formData.firstName.trim()) newErrors.firstName = "First name is required"
     if (!formData.lastName.trim()) newErrors.lastName = "Last name is required"
     if (!formData.username.trim()) newErrors.username = "Username is required"
-    if (!formData.email.trim()) newErrors.email = "Email is required"
-    if (!formData.password) newErrors.password = "Password is required"
-    if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters"
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match"
-    if (!formData.roomNumber.trim()) newErrors.roomNumber = "Room number is required"
-    if (!formData.hall.trim()) newErrors.hall = "Hall name is required"
+    if (formData.username.length < 3) newErrors.username = "Username must be at least 3 characters"
+
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required"
+    } else if (!validateEmail(formData.email)) {
+      newErrors.email = "Please use your university email address (@covenantuniversity.edu.ng or @stu.cu.edu.ng)"
+    }
+
+    if (!formData.password) {
+      newErrors.password = "Password is required"
+    } else {
+      const passwordError = validatePassword(formData.password)
+      if (passwordError) newErrors.password = `Password must meet these requirements: ${passwordError}`
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match"
+    }
+
+    if (!formData.roomNumber.trim()) {
+      newErrors.roomNumber = "Room number is required"
+    } else if (!validateRoomNumber(formData.roomNumber)) {
+      newErrors.roomNumber = "Invalid room number format (e.g., A123)"
+    }
+
+    if (!formData.hall) newErrors.hall = "Hall name is required"
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -54,27 +118,38 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setApiError("")
 
     if (!validateForm()) return
 
     setIsLoading(true)
 
     try {
-      const success = await signup({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        roomNumber: formData.roomNumber,
-        hall: formData.hall,
-      })
+      const success = await signup(formData)
 
       if (success) {
-        router.push("/login")
+        toast({
+          title: "Welcome to CUMall!",
+          description: "Your account has been created successfully.",
+          duration: 3000,
+        })
+        // Small delay before redirect to show the toast
+        setTimeout(() => {
+          router.push("/")
+        }, 1000)
+      } else {
+        setApiError("Failed to create account. Please try again.")
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Signup error:", error)
+
+      if (error.message?.includes("email_exists")) {
+        setApiError("This email is already registered. Please try logging in instead.")
+      } else if (error.message?.includes("invalid_email")) {
+        setApiError("Please use a valid university email address.")
+      } else {
+        setApiError("Failed to create account. Please try again.")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -84,6 +159,9 @@ export default function SignupPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }))
+    }
+    if (apiError) {
+      setApiError("")
     }
   }
 
@@ -96,6 +174,13 @@ export default function SignupPage() {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {apiError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{apiError}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
@@ -141,7 +226,7 @@ export default function SignupPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="john@university.edu"
+                placeholder="john@covenantuniversity.edu.ng"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 disabled={isLoading}
@@ -174,6 +259,9 @@ export default function SignupPage() {
                 </Button>
               </div>
               {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+              {formData.password && !errors.password && (
+                <p className="text-sm text-green-600">Password meets all requirements</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -207,26 +295,53 @@ export default function SignupPage() {
                 <Label htmlFor="roomNumber">Room Number</Label>
                 <Input
                   id="roomNumber"
-                  placeholder="A210"
+                  placeholder="A123"
                   value={formData.roomNumber}
-                  onChange={(e) => handleInputChange("roomNumber", e.target.value)}
+                  onChange={(e) => handleInputChange("roomNumber", e.target.value.toUpperCase())}
                   disabled={isLoading}
                   className="w-full"
+                  maxLength={4}
                 />
                 {errors.roomNumber && <p className="text-sm text-destructive">{errors.roomNumber}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="hall">Hall</Label>
-                <Input
-                  id="hall"
-                  placeholder="Enter hall name"
+                <Select
                   value={formData.hall}
-                  onChange={(e) => handleInputChange("hall", e.target.value)}
+                  onValueChange={(value) => handleInputChange("hall", value)}
                   disabled={isLoading}
-                  className="w-full"
-                />
+                >
+                  <SelectTrigger id="hall" className="w-full">
+                    <SelectValue placeholder="Select hall" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VALID_HALLS.map((hall) => (
+                      <SelectItem key={hall} value={hall}>
+                        {hall}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.hall && <p className="text-sm text-destructive">{errors.hall}</p>}
               </div>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium mb-2">Password Requirements:</p>
+              <ul className="list-disc list-inside space-y-1">
+                {PASSWORD_REQUIREMENTS.map((req, index) => (
+                  <li
+                    key={index}
+                    className={
+                      formData.password && req.regex.test(formData.password)
+                        ? "text-green-600"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {req.label}
+                  </li>
+                ))}
+              </ul>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">

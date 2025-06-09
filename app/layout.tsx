@@ -1,8 +1,16 @@
 import type React from "react"
 import { Inter } from "next/font/google"
-import ClientLayout from "./ClientLayout"
+import './globals.css'
+import Providers from "@/components/providers/Providers"
+import MainLayout from "@/components/layout/MainLayout"
 
 const inter = Inter({ subsets: ["latin"] })
+
+export const metadata = {
+  title: 'CUMall - Your Campus Shopping Destination',
+  description: 'Shop for all your campus needs at CUMall',
+  generator: 'v0.dev'
+}
 
 export default function RootLayout({
   children,
@@ -10,21 +18,14 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <title>CUMall - Your Campus Shopping Destination</title>
-        <meta name="description" content="Shop for all your campus needs at CUMall" />
-      </head>
-      <body className={inter.className}>
-        <ClientLayout>{children}</ClientLayout>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className} suppressHydrationWarning>
+        <Providers>
+          <MainLayout>
+            {children}
+          </MainLayout>
+        </Providers>
       </body>
     </html>
   )
 }
-
-
-import './globals.css'
-
-export const metadata = {
-      generator: 'v0.dev'
-    };

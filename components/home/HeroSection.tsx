@@ -19,7 +19,7 @@ const slides = [
     description: "Get ready for the semester with our premium stationery collection.",
     image: "/bg-1.jpeg?height=600&width=1200",
     cta: "Explore Stationery",
-    link: "/categories/Stationery",
+    link: "/categories/Stationeries",
     color: "from-purple-800 to-green-600",
   },
   {

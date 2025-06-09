@@ -1,14 +1,15 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { useToast } from "@/components/ui/use-toast"
+import { createContext, useContext, useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "./AuthContext"
+import { generateOrderId, saveOrder, calculateEstimatedDelivery } from "@/lib/orderStorage"
 
 interface CartItem {
   id: string
   name: string
-  quantity: number
   price: number
+  quantity: number
   category: string
   image?: string
 }
@@ -21,25 +22,21 @@ interface CartContextType {
   clearCart: () => void
   totalItems: number
   totalPrice: number
-  checkout: () => Promise<boolean>
+  checkout: () => Promise<{ orderId: string } | false>
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
-  const { toast } = useToast()
-  const { user, token } = useAuth()
+  const { user, isAuthenticated } = useAuth()
+  const router = useRouter()
 
-  // Load cart from localStorage on initial render
+  // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem("cart")
     if (savedCart) {
-      try {
-        setItems(JSON.parse(savedCart))
-      } catch (error) {
-        console.error("Error parsing cart data:", error)
-      }
+      setItems(JSON.parse(savedCart))
     }
   }, [])
 
@@ -49,159 +46,82 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [items])
 
   const addItem = (item: CartItem) => {
-    setItems((prevItems) => {
-      // Check if item already exists in cart
-      const existingItemIndex = prevItems.findIndex((i) => i.id === item.id)
-
-      if (existingItemIndex >= 0) {
-        // Update quantity of existing item
-        const updatedItems = [...prevItems]
-        updatedItems[existingItemIndex].quantity += item.quantity
-
-        toast({
-          title: "Cart Updated",
-          description: `${item.name} quantity increased to ${updatedItems[existingItemIndex].quantity}`,
-        })
-
-        return updatedItems
-      } else {
-        // Add new item
-        toast({
-          title: "Added to Cart",
-          description: `${item.name} added to your cart`,
-        })
-
-        return [...prevItems, item]
+    setItems((currentItems) => {
+      const existingItem = currentItems.find((i) => i.id === item.id)
+      if (existingItem) {
+        return currentItems.map((i) =>
+          i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i
+        )
       }
+      return [...currentItems, item]
     })
   }
 
   const removeItem = (id: string) => {
-    setItems((prevItems) => {
-      const itemToRemove = prevItems.find((item) => item.id === id)
-
-      if (itemToRemove) {
-        toast({
-          title: "Removed from Cart",
-          description: `${itemToRemove.name} removed from your cart`,
-        })
-      }
-
-      return prevItems.filter((item) => item.id !== id)
-    })
+    setItems((currentItems) => currentItems.filter((item) => item.id !== id))
   }
 
   const updateQuantity = (id: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeItem(id)
-      return
-    }
-
-    setItems((prevItems) => prevItems.map((item) => (item.id === id ? { ...item, quantity } : item)))
+    setItems((currentItems) =>
+      currentItems.map((item) => (item.id === id ? { ...item, quantity } : item))
+    )
   }
 
   const clearCart = () => {
     setItems([])
-    toast({
-      title: "Cart Cleared",
-      description: "All items have been removed from your cart",
-    })
+    localStorage.removeItem("cart")
   }
 
   const totalItems = items.reduce((total, item) => total + item.quantity, 0)
-
   const totalPrice = items.reduce((total, item) => total + item.price * item.quantity, 0)
 
-  const checkout = async (): Promise<boolean> => {
-    if (!user || !token) {
-      toast({
-        variant: "destructive",
-        title: "Authentication Required",
-        description: "Please login to complete your order",
-      })
-      return false
-    }
-
-    if (items.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Empty Cart",
-        description: "Your cart is empty",
-      })
+  const checkout = async () => {
+    if (!isAuthenticated || !user) {
+      router.push("/login")
       return false
     }
 
     try {
-      const orderData = {
-        ordered_by: user.email,
-        state: 0,
-        room_number: user.roomNumber,
-        hall: user.hall,
-        items: items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          category: item.category,
-        })),
-      }
-
-      const response = await fetch("https://cumall-backend.onrender.com/api/orders/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const orderId = generateOrderId()
+      const order = {
+        orderId,
+        userId: user.email,
+        items: items,
+        total: totalPrice.toFixed(2),
+        status: "processing" as const,
+        createdAt: new Date().toISOString(),
+        estimatedDelivery: calculateEstimatedDelivery(),
+        deliveryAddress: {
+          roomNumber: user.roomNumber || "",
+          hall: user.hall || "",
         },
-        body: JSON.stringify(orderData),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        const orderId = data.orderId || `ORD-${Date.now()}`
-        clearCart()
-        toast({
-          title: "Order Placed Successfully",
-          description: "Thank you for your purchase!",
-        })
-
-        // Redirect to success page with order details
-        window.location.href = `/checkout/success?orderId=${orderId}&total=${totalPrice.toFixed(2)}`
-        return true
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Checkout Failed",
-          description: data.message || "Could not complete your order",
-        })
-        return false
       }
+
+      const success = saveOrder(order)
+      if (success) {
+        clearCart()
+        router.push(`/checkout/success?orderId=${orderId}`)
+        return { orderId }
+      }
+      return false
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Checkout Error",
-        description: "An error occurred during checkout. Please try again.",
-      })
+      console.error("Checkout error:", error)
       return false
     }
   }
 
-  return (
-    <CartContext.Provider
-      value={{
-        items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        totalItems,
-        totalPrice,
-        checkout,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
-  )
+  const value = {
+    items,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    totalItems,
+    totalPrice,
+    checkout,
+  }
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }
 
 export function useCart() {

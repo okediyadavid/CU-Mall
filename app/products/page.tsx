@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Search, Filter, Star, ShoppingCart } from "lucide-react"
+import { Search, Filter, Star, ShoppingCart, Minus, Plus, Trash2 } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 import Link from "next/link"
 
@@ -24,12 +24,36 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState<string>("name")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [quantities, setQuantities] = useState<{ [key: string]: number }>({})
+  const [removingFromCart, setRemovingFromCart] = useState<{ [key: string]: boolean }>({})
 
   const searchParams = useSearchParams()
-  const { addItem } = useCart()
+  const { addItem, updateQuantity, removeItem, items } = useCart()
+
+  const getQuantity = (productId: string) => {
+    const cartItem = items.find((item) => item.id === productId)
+    return cartItem ? cartItem.quantity : quantities[productId] || 1
+  }
+
+  const handleQuantityChange = (productId: string, quantity: number) => {
+    const newQuantity = Math.max(1, Math.min(quantity, 10))
+
+    const cartItem = items.find((item) => item.id === productId)
+    if (cartItem) {
+      updateQuantity(productId, newQuantity)
+    } else {
+      setQuantities((prev) => ({
+        ...prev,
+        [productId]: newQuantity,
+      }))
+    }
+  }
+
+  const isInCart = (productId: string) => {
+    return items.some((item) => item.id === productId)
+  }
 
   useEffect(() => {
-    // Get search query from URL params
     const urlSearch = searchParams.get("search")
     if (urlSearch) {
       setSearchQuery(urlSearch)
@@ -62,7 +86,6 @@ export default function ProductsPage() {
 
         let filteredProducts = response.data
 
-        // Apply search filter
         if (searchQuery.trim()) {
           filteredProducts = filteredProducts.filter(
             (product) =>
@@ -72,7 +95,6 @@ export default function ProductsPage() {
           )
         }
 
-        // Apply sorting
         switch (sortBy) {
           case "price-low":
             filteredProducts.sort((a, b) => a.price - b.price)
@@ -107,14 +129,28 @@ export default function ProductsPage() {
   }, [currentPage, selectedCategory, searchQuery, sortBy])
 
   const handleAddToCart = (product: Product) => {
+    const quantity = getQuantity(product.uuid)
     addItem({
       id: product.uuid,
       name: product.title,
-      quantity: 1,
+      quantity: quantity,
       price: product.price,
       category: product.category,
       image: product.productImage,
     })
+  }
+
+  const handleRemoveFromCart = async (productId: string) => {
+    setRemovingFromCart((prev) => ({ ...prev, [productId]: true }))
+
+    try {
+      removeItem(productId)
+      setQuantities((prev) => ({ ...prev, [productId]: 1 }))
+    } catch (error) {
+      console.error("Failed to remove from cart:", error)
+    } finally {
+      setRemovingFromCart((prev) => ({ ...prev, [productId]: false }))
+    }
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -178,7 +214,6 @@ export default function ProductsPage() {
             </Select>
           </div>
 
-          {/* Active Filters */}
           <div className="flex flex-wrap gap-2">
             {searchQuery && (
               <Badge variant="secondary" className="cursor-pointer" onClick={() => setSearchQuery("")}>
@@ -263,11 +298,67 @@ export default function ProductsPage() {
                       <p className="font-bold text-lg">₦{product.price.toFixed(2)}</p>
                     </div>
                   </CardContent>
-                  <CardFooter className="p-4 pt-0">
-                    <Button onClick={() => handleAddToCart(product)} className="w-full">
-                      <ShoppingCart className="mr-2 h-4 w-4" />
-                      Add to Cart
-                    </Button>
+                  <CardFooter className="p-4 pt-0 space-y-3">
+                    {/* Quantity Selector */}
+                    <div className="flex items-center justify-center space-x-3 w-full">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) - 1)}
+                        disabled={getQuantity(product.uuid) <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="font-semibold text-lg min-w-[2rem] text-center">
+                        {getQuantity(product.uuid)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) + 1)}
+                        disabled={getQuantity(product.uuid) >= 10}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Add to Cart / Remove Buttons */}
+                    {!isInCart(product.uuid) ? (
+                      <Button onClick={() => handleAddToCart(product)} className="w-full">
+                        <ShoppingCart className="mr-2 h-4 w-4" />
+                        Add to Cart
+                      </Button>
+                    ) : (
+                      <div className="space-y-2 w-full">
+                        <Button
+                          onClick={() => handleAddToCart(product)}
+                          className="w-full bg-green-600 hover:bg-green-700"
+                        >
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          Update Cart
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => handleRemoveFromCart(product.uuid)}
+                          className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 hover:border-red-300"
+                          disabled={removingFromCart[product.uuid]}
+                        >
+                          {removingFromCart[product.uuid] ? (
+                            <div className="flex items-center space-x-1">
+                              <div className="w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                              <span>Removing...</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-1">
+                              <Trash2 className="h-3 w-3" />
+                              <span>Remove from Cart</span>
+                            </div>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </CardFooter>
                 </Card>
               ))}

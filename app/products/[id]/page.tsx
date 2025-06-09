@@ -11,6 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Star, ShoppingCart, Minus, Plus, ArrowLeft, Check } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 import { useToast } from "@/components/ui/use-toast"
+import { RecommendedProducts } from "@/components/products/RecommendedProducts"
+import { RecentlyViewed } from "@/components/products/RecentlyViewed"
+import { addToRecentlyViewed } from "@/lib/userPreferences"
 
 export default function ProductPage() {
   const params = useParams()
@@ -40,13 +43,27 @@ export default function ProductPage() {
             .slice(0, 4)
           setRelatedProducts(filtered)
         }
+
+        // Add to recently viewed
+        if (data) {
+          addToRecentlyViewed({
+            id: data.uuid,
+            name: data.title,
+            price: data.price,
+            category: data.category,
+            image: data.productImage,
+            viewedAt: new Date().toISOString(),
+          })
+        }
       } catch (error) {
         console.error("Failed to fetch product:", error)
         toast({
           variant: "destructive",
           title: "Error",
           description: "Failed to load product details. Please try again.",
+          duration: 3000,
         })
+        router.push("/products")
       } finally {
         setIsLoading(false)
       }
@@ -55,7 +72,7 @@ export default function ProductPage() {
     if (productId) {
       fetchProduct()
     }
-  }, [productId, toast])
+  }, [productId, router, toast])
 
   const handleQuantityChange = (value: number) => {
     if (value >= 1 && value <= (product?.quantity || 10)) {
@@ -86,19 +103,15 @@ export default function ProductPage() {
 
   if (isLoading) {
     return (
-      <div className="pt-24 pb-16">
-        <div className="container mx-auto px-4">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Skeleton className="h-[400px] w-full rounded-lg" />
+            <Skeleton className="aspect-square w-full" />
             <div className="space-y-4">
-              <Skeleton className="h-10 w-3/4" />
-              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-8 w-3/4" />
               <Skeleton className="h-6 w-1/4" />
               <Skeleton className="h-24 w-full" />
-              <div className="flex items-center space-x-4">
-                <Skeleton className="h-12 w-32" />
-                <Skeleton className="h-12 w-full" />
-              </div>
+              <Skeleton className="h-12 w-1/3" />
             </div>
           </div>
         </div>
@@ -108,8 +121,8 @@ export default function ProductPage() {
 
   if (!product) {
     return (
-      <div className="pt-24 pb-16">
-        <div className="container mx-auto px-4 text-center">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
           <h1 className="text-2xl font-bold mb-4">Product Not Found</h1>
           <p className="mb-6">The product you're looking for doesn't exist or has been removed.</p>
           <Link href="/products">
@@ -121,28 +134,26 @@ export default function ProductPage() {
   }
 
   return (
-    <div className="pt-24 pb-16">
-      <div className="container mx-auto px-4">
-        {/* Breadcrumb */}
-        <div className="mb-8">
-          <Link href="/products" className="inline-flex items-center text-primary hover:underline">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Products
-          </Link>
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto">
+        <Link href="/products" className="inline-flex items-center text-primary hover:underline mb-6">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Products
+        </Link>
 
-        {/* Product Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
           {/* Product Image */}
-          <div className="bg-muted/30 rounded-lg overflow-hidden flex items-center justify-center p-4">
-            <img
-              src={product.productImage || "/placeholder.svg?height=500&width=500"}
-              alt={product.title}
-              className="max-h-[400px] object-contain"
-            />
+          <div>
+            <div className="aspect-square relative overflow-hidden rounded-lg border">
+              <img
+                src={product.productImage || "/placeholder.svg"}
+                alt={product.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
 
-          {/* Product Info */}
+          {/* Product Details */}
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold mb-2">{product.title}</h1>
@@ -150,9 +161,8 @@ export default function ProductPage() {
                 {[...Array(5)].map((_, i) => (
                   <Star
                     key={i}
-                    className={`h-5 w-5 ${
-                      i < Math.floor(product.avgRating || 0) ? "text-yellow-500 fill-yellow-500" : "text-gray-300"
-                    }`}
+                    className={`h-5 w-5 ${i < Math.floor(product.avgRating || 0) ? "text-yellow-500 fill-yellow-500" : "text-gray-300"
+                      }`}
                   />
                 ))}
                 <span className="text-sm text-muted-foreground ml-2">({product.avgRating || 0})</span>
@@ -180,93 +190,104 @@ export default function ProductPage() {
 
             {/* Quantity Selector */}
             <div className="flex items-center space-x-4">
-              <div className="flex items-center border rounded-md">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleQuantityChange(quantity - 1)}
-                  disabled={quantity <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="w-12 text-center">{quantity}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleQuantityChange(quantity + 1)}
-                  disabled={quantity >= product.quantity}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <Button onClick={handleAddToCart} className="flex-1" disabled={product.quantity === 0} size="lg">
-                <ShoppingCart className="mr-2 h-5 w-5" />
-                Add to Cart
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleQuantityChange(Math.max(1, quantity - 1))}
+                disabled={quantity <= 1}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="font-semibold text-lg min-w-[2rem] text-center">{quantity}</span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleQuantityChange(Math.min(10, quantity + 1))}
+                disabled={quantity >= 10}
+              >
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
+
+            {/* Add to Cart */}
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={handleAddToCart}
+              disabled={product.quantity === 0}
+            >
+              <ShoppingCart className="mr-2 h-5 w-5" />
+              Add to Cart
+            </Button>
           </div>
         </div>
 
-        {/* Product Tabs */}
+        {/* Product Information Tabs */}
         <Tabs defaultValue="details" className="mb-12">
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="details">Product Details</TabsTrigger>
-            <TabsTrigger value="reviews">Reviews</TabsTrigger>
-            <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
+          <TabsList>
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="specifications">Specifications</TabsTrigger>
+            <TabsTrigger value="shipping">Shipping</TabsTrigger>
           </TabsList>
-          <TabsContent value="details" className="p-4 border rounded-md mt-2">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Specifications</h3>
-              <ul className="list-disc pl-5 space-y-2">
-                <li>Category: {product.category}</li>
-                <li>SKU: {product.uuid.substring(0, 8).toUpperCase()}</li>
-                <li>Date Added: {new Date(product.dateAdded || "").toLocaleDateString()}</li>
-                {/* Add more specifications as needed */}
-              </ul>
-              <h3 className="font-semibold text-lg">Description</h3>
-              <p>{product.description}</p>
-            </div>
+          <TabsContent value="details" className="prose max-w-none">
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Product Details</h3>
+                <p className="text-muted-foreground">{product.description}</p>
+              </CardContent>
+            </Card>
           </TabsContent>
-          <TabsContent value="reviews" className="p-4 border rounded-md mt-2">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Customer Reviews</h3>
-              {product.reviews && product.reviews.length > 0 ? (
-                <div className="space-y-4">
-                  {product.reviews.map((review, index) => (
-                    <div key={index} className="border-b pb-4">
-                      <div className="flex items-center mb-2">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`h-4 w-4 ${i < review.rating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`}
-                          />
-                        ))}
-                        <span className="ml-2 font-medium">{review.username}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{review.comment}</p>
-                    </div>
-                  ))}
+          <TabsContent value="specifications">
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Specifications</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="font-medium">Category</p>
+                    <p className="text-muted-foreground">{product.category}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Stock</p>
+                    <p className="text-muted-foreground">{product.quantity} units</p>
+                  </div>
                 </div>
-              ) : (
-                <p className="text-muted-foreground">No reviews yet. Be the first to review this product!</p>
-              )}
-            </div>
+              </CardContent>
+            </Card>
           </TabsContent>
-          <TabsContent value="shipping" className="p-4 border rounded-md mt-2">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Shipping Information</h3>
-              <p>
-                We deliver to all campus dorms and halls within 24 hours of order confirmation. Orders placed before 2
-                PM are typically delivered the same day.
-              </p>
-              <h3 className="font-semibold text-lg">Return Policy</h3>
-              <p>
-                You can return or exchange items within 7 days of delivery. Items must be unused and in their original
-                packaging. Contact our customer support to initiate a return or exchange.
-              </p>
-            </div>
+          <TabsContent value="shipping">
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Shipping Information</h3>
+                <div className="space-y-4">
+                  <p className="text-muted-foreground">
+                    We offer fast delivery to all campus dorms and halls within 24-48 hours.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="font-medium">Delivery Time</p>
+                      <p className="text-muted-foreground">24-48 hours</p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Shipping Fee</p>
+                      <p className="text-muted-foreground">Free for orders above ₦5,000</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Recommended Products */}
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold">Recommended Products</h2>
+          <RecommendedProducts currentProductId={product.uuid} />
+        </div>
+
+        {/* Recently Viewed */}
+        <div className="mt-12">
+          <RecentlyViewed />
+        </div>
 
         {/* Related Products */}
         {relatedProducts.length > 0 && (
@@ -293,11 +314,10 @@ export default function ProductPage() {
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.floor(relatedProduct.avgRating || 0)
-                                ? "text-yellow-500 fill-yellow-500"
-                                : "text-gray-300"
-                            }`}
+                            className={`h-4 w-4 ${i < Math.floor(relatedProduct.avgRating || 0)
+                              ? "text-yellow-500 fill-yellow-500"
+                              : "text-gray-300"
+                              }`}
                           />
                         ))}
                       </div>

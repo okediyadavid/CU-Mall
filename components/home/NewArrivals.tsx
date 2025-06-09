@@ -6,20 +6,46 @@ import { productsApi, type Product } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react"
+import { ChevronLeft, ChevronRight, ShoppingCart, Minus, Plus, Check } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 
 export default function NewArrivals() {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const { addItem } = useCart()
+  const { addItem, updateQuantity, removeItem, items } = useCart()
+
+  const [quantities, setQuantities] = useState<{ [key: string]: number }>({})
+  const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({})
+  const [justAdded, setJustAdded] = useState<{ [key: string]: boolean }>({})
+
+  const getQuantity = (productId: string) => {
+    const cartItem = items.find((item) => item.id === productId)
+    return cartItem ? cartItem.quantity : quantities[productId] || 1
+  }
+
+  const handleQuantityChange = (productId: string, quantity: number) => {
+    const newQuantity = Math.max(1, Math.min(quantity, 10))
+
+    const cartItem = items.find((item) => item.id === productId)
+    if (cartItem) {
+      updateQuantity(productId, newQuantity)
+    } else {
+      setQuantities((prev) => ({
+        ...prev,
+        [productId]: newQuantity,
+      }))
+    }
+  }
+
+  const isInCart = (productId: string) => {
+    return items.some((item) => item.id === productId)
+  }
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const response = await productsApi.getAll(1)
-        // Sort by date added and get the newest 8
         const sortedProducts = [...response.data]
           .sort((a, b) => {
             const dateA = new Date(a.dateAdded || "").getTime()
@@ -52,15 +78,30 @@ export default function NewArrivals() {
     }
   }
 
-  const handleAddToCart = (product: Product) => {
-    addItem({
-      id: product.uuid,
-      name: product.title,
-      quantity: 1,
-      price: product.price,
-      category: product.category,
-      image: product.productImage,
-    })
+  const handleAddToCart = async (product: Product) => {
+    const productId = product.uuid
+    setAddingToCart((prev) => ({ ...prev, [productId]: true }))
+
+    try {
+      const quantity = getQuantity(productId)
+      addItem({
+        id: product.uuid,
+        name: product.title,
+        quantity: quantity,
+        price: product.price,
+        category: product.category,
+        image: product.productImage,
+      })
+
+      setJustAdded((prev) => ({ ...prev, [productId]: true }))
+      setTimeout(() => {
+        setJustAdded((prev) => ({ ...prev, [productId]: false }))
+      }, 2000)
+    } catch (error) {
+      console.error("Failed to add to cart:", error)
+    } finally {
+      setAddingToCart((prev) => ({ ...prev, [productId]: false }))
+    }
   }
 
   return (
@@ -102,8 +143,8 @@ export default function NewArrivals() {
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {products.map((product) => (
-                <div key={product.uuid} className="flex-none w-[250px] snap-start">
-                  <Card className="h-full">
+                <div key={product.uuid} className="flex-none w-[280px] snap-start">
+                  <Card className="h-full hover:shadow-lg transition-shadow">
                     <CardContent className="p-4">
                       <Link href={`/products/${product.uuid}`}>
                         <div className="relative h-40 mb-3 overflow-hidden rounded-md">
@@ -113,24 +154,71 @@ export default function NewArrivals() {
                             className="w-full h-full object-cover transition-transform hover:scale-105"
                           />
                           <div className="absolute top-2 left-2">
-                            <span className="bg-secondary text-secondary-foreground text-xs px-2 py-1 rounded-full">
+                            <span className="bg-primary text-primary-foreground text-xs px-2 py-1 rounded-full font-medium">
                               New
                             </span>
                           </div>
                         </div>
-                        <h3 className="font-medium mb-1 line-clamp-1">{product.title}</h3>
+                        <h3 className="font-semibold mb-1 line-clamp-1">{product.title}</h3>
                         <p className="text-muted-foreground text-sm mb-2 line-clamp-1">{product.category}</p>
-                        <p className="font-bold">₦{product.price.toFixed(2)}</p>
+                        <p className="font-bold text-primary">₦{product.price.toFixed(2)}</p>
                       </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-3"
-                        onClick={() => handleAddToCart(product)}
-                      >
-                        <ShoppingCart className="mr-2 h-4 w-4" />
-                        Add to Cart
-                      </Button>
+
+                      <div className="mt-4 space-y-3">
+                        {/* Quantity Selector */}
+                        <div className="flex items-center justify-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 rounded-full"
+                            onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) - 1)}
+                            disabled={getQuantity(product.uuid) <= 1}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="font-semibold min-w-[1.5rem] text-center">{getQuantity(product.uuid)}</span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 rounded-full"
+                            onClick={() => handleQuantityChange(product.uuid, getQuantity(product.uuid) + 1)}
+                            disabled={getQuantity(product.uuid) >= 10}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+
+                        {/* Add to Cart Button */}
+                        <Button
+                          onClick={() => handleAddToCart(product)}
+                          className={`w-full h-9 text-sm font-semibold transition-all ${
+                            isInCart(product.uuid) ? "bg-green-600 hover:bg-green-700" : "hover:scale-105"
+                          }`}
+                          disabled={addingToCart[product.uuid]}
+                        >
+                          {addingToCart[product.uuid] ? (
+                            <div className="flex items-center space-x-1">
+                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Adding...</span>
+                            </div>
+                          ) : justAdded[product.uuid] ? (
+                            <div className="flex items-center space-x-1">
+                              <Check className="h-3 w-3" />
+                              <span>Added!</span>
+                            </div>
+                          ) : isInCart(product.uuid) ? (
+                            <div className="flex items-center space-x-1">
+                              <Check className="h-3 w-3" />
+                              <span>In Cart</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-1">
+                              <ShoppingCart className="h-3 w-3" />
+                              <span>Add to Cart</span>
+                            </div>
+                          )}
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -141,7 +229,9 @@ export default function NewArrivals() {
 
         <div className="text-center mt-8">
           <Link href="/products">
-            <Button variant="outline">View All New Arrivals</Button>
+            <Button variant="outline" className="hover:scale-105 transition-transform">
+              View All New Arrivals
+            </Button>
           </Link>
         </div>
       </div>
