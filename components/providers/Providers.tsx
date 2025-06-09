@@ -10,6 +10,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <ThemeProvider
             attribute="class"
             defaultTheme="light"
+            forcedTheme="light"
             enableSystem={false}
             disableTransitionOnChange
             storageKey="cumall-theme"

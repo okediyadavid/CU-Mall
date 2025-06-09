@@ -29,21 +29,31 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [mounted, setMounted] = useState(false)
   const { user, isAuthenticated } = useAuth()
   const router = useRouter()
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    const savedCart = localStorage.getItem("cart")
-    if (savedCart) {
-      setItems(JSON.parse(savedCart))
+    setMounted(true)
+    if (typeof window !== 'undefined') {
+      const savedCart = localStorage.getItem("cart")
+      if (savedCart) {
+        setItems(JSON.parse(savedCart))
+      }
     }
   }, [])
 
   // Save cart to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(items))
-  }, [items])
+    if (mounted && typeof window !== 'undefined') {
+      localStorage.setItem("cart", JSON.stringify(items))
+    }
+  }, [items, mounted])
+
+  if (!mounted) {
+    return null
+  }
 
   const addItem = (item: CartItem) => {
     setItems((currentItems) => {
